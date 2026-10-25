@@ -1,0 +1,78 @@
+# Academia Universal API + PostgreSQL
+#   docker compose up -d --build
+#   docker compose exec api npm run seed:prod      # demo data (wipes the database)
+#   docker compose logs -f api                     # live logs
+# Values like PAYSTACK_SECRET_KEY are read from a .env file next to this one (see .env.example).
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-academia}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-academia}
+      POSTGRES_DB: ${DB_NAME:-academia_universal}
+    ports:
+      - "${DB_PUBLISH_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-academia} -d ${DB_NAME:-academia_universal}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: *logging
+
+  api:
+    build: .
+    image: academia-universal-api
+    restart: unless-stopped
+    init: true
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 4000
+      PUBLIC_URL: ${PUBLIC_URL:-http://localhost:4000}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      MOBILE_CALLBACK_URL: ${MOBILE_CALLBACK_URL:-academiauniversal://payment/callback}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5173,http://localhost:8081}
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_USER: ${DB_USER:-academia}
+      DB_PASSWORD: ${DB_PASSWORD:-academia}
+      DB_NAME: ${DB_NAME:-academia_universal}
+      # Creates tables on first boot. Set to false once you manage the schema with migrations.
+      DB_SYNC: ${DB_SYNC:-true}
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET:?Set JWT_ACCESS_SECRET in .env}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:?Set JWT_REFRESH_SECRET in .env}
+      ADMIN_ORIGINS: ${ADMIN_ORIGINS:-http://localhost:5174}
+      ADMIN_2FA_REQUIRED: ${ADMIN_2FA_REQUIRED:-true}
+      ADMIN_IP_ALLOWLIST: ${ADMIN_IP_ALLOWLIST:-}
+      ADMIN_SESSION_MAX_HOURS: ${ADMIN_SESSION_MAX_HOURS:-12}
+      TOTP_ENCRYPTION_KEY: ${TOTP_ENCRYPTION_KEY:?Set TOTP_ENCRYPTION_KEY in .env}
+      PAYSTACK_SECRET_KEY: ${PAYSTACK_SECRET_KEY:-}
+      PAYSTACK_PUBLIC_KEY: ${PAYSTACK_PUBLIC_KEY:-}
+      PAYSTACK_CURRENCY: ${PAYSTACK_CURRENCY:-NGN}
+      PRO_PRICE: ${PRO_PRICE:-5000}
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      LOG_TO_FILE: "true"
+      LOG_RETENTION_DAYS: ${LOG_RETENTION_DAYS:-14}
+    ports:
+      - "${API_PORT:-4000}:4000"
+    volumes:
+      - uploads:/app/uploads
+      - logs:/app/logs
+    logging: *logging
+
+volumes:
+  pgdata:
+  uploads:
+  logs:
